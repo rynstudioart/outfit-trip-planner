@@ -22,21 +22,24 @@
   }
   button:hover{background:#1565c0;}
   button:active{transform:scale(.98);}
+
   #board{
     flex:1;position:relative;background:#fff;border:1px solid #eee;
     border-radius:8px;overflow:hidden;margin-top:10px;
   }
+
   .photo{
     position:absolute;cursor:grab;user-select:none;
-    border:2px solid transparent;border-radius:6px;overflow:visible;touch-action:none;
+    border:2px solid transparent;border-radius:6px;
   }
   .photo.selected{border-color:#ffeb3b;}
-  .photo img{display:block;max-width:none;height:auto;pointer-events:none;border-radius:6px;}
+  .photo img{display:block;max-width:none;height:auto;border-radius:6px;pointer-events:none;}
+
   .resize-handle{
     position:absolute;bottom:-6px;right:-6px;width:10px;height:10px;
-    background:#ffffff;border-radius:50%;cursor:se-resize;
-    border:1px solid white;
+    background:#fff;border-radius:50%;cursor:se-resize;border:1px solid #000;
   }
+
   /* Popup */
   .popup{
     position:fixed;top:0;left:0;right:0;bottom:0;
@@ -54,16 +57,23 @@
   .popup-content button:hover{background:#1565c0;}
 </style>
 </head>
+
 <body>
 <div class="app">
+
   <header>
     <label for="daySelect">Select Day:</label>
     <select id="daySelect"></select>
+
     <button id="addDayBtn">+ Add Day</button>
     <button id="insertPhotoBtn">Insert Photo(s)</button>
     <button id="deletePhotoBtn">Delete Selected</button>
+
+    <!-- SAVE MANUAL -->
     <button id="saveLocalBtn">Save Local</button>
+
     <button id="resetBtn">Reset</button>
+
     <input id="fileInput" type="file" accept="image/*" multiple style="display:none"/>
     <input id="cameraInput" type="file" accept="image/*" capture="environment" style="display:none"/>
   </header>
@@ -85,11 +95,17 @@
 
 <script>
 (function(){
-  const STORAGE_KEY = 'trip_outfit_v3';
+  /* --------------------------------------------
+       STORAGE KEYS (pentru varianta B)
+  -------------------------------------------- */
+  const STORAGE_KEY = 'trip_outfit_v3_manual';
+  const STORAGE_DAY_KEY = 'trip_outfit_current_day';
+
   let data = {};
   let currentDay = 'Day 1';
+
   let dragged = null, startX=0, startY=0, origX=0, origY=0;
-  let resizing = null, startW=0, startH=0;
+  let resizing = null, startW=0;
   let touchStartTime = 0;
 
   const daySelect = document.getElementById('daySelect');
@@ -109,8 +125,11 @@
   const closePopupBtn = document.getElementById('closePopupBtn');
 
   function createId(){return 'id_'+Math.random().toString(36).slice(2,9);}
-  function ensureDay(d){if(!data[d])data[d]=[];}
+  function ensureDay(d){ if(!data[d]) data[d] = []; }
 
+  /* --------------------------------------------
+       RENDER DAYS + BOARD
+  -------------------------------------------- */
   function renderDays(){
     daySelect.innerHTML='';
     Object.keys(data).forEach(d=>{
@@ -124,25 +143,28 @@
   function renderBoard(){
     board.innerHTML='';
     ensureDay(currentDay);
+
     data[currentDay].forEach(p=>{
       const el=document.createElement('div');
       el.className='photo';
       el.dataset.id=p.id;
       el.style.left=p.x+'px';
       el.style.top=p.y+'px';
+
       const img=document.createElement('img');
       img.src=p.src;
-      if(p.width) img.style.width=p.width+'px';
+      if(p.width) img.style.width = p.width + 'px';
       el.appendChild(img);
 
-      // Resize handle
       const rh=document.createElement('div');
       rh.className='resize-handle';
       el.appendChild(rh);
 
-      // events
+      // Drag events
       el.addEventListener('mousedown',startDrag);
       el.addEventListener('touchstart',startDragTouch,{passive:false});
+
+      // Resize
       rh.addEventListener('mousedown',startResize);
       rh.addEventListener('touchstart',startResizeTouch,{passive:false});
 
@@ -150,131 +172,79 @@
     });
   }
 
-  // Dragging
+  /* --------------------------------------------
+      DRAGGING
+  -------------------------------------------- */
   function startDrag(e){
     if(e.target.classList.contains('resize-handle'))return;
     if(e.button!==0)return;
-    dragged=e.currentTarget;
-    const rect=dragged.getBoundingClientRect();
-    const brect=board.getBoundingClientRect();
-    startX=e.clientX; startY=e.clientY;
-    origX=rect.left-brect.left; origY=rect.top-brect.top;
+
+    dragged = e.currentTarget;
+    const rect = dragged.getBoundingClientRect();
+    const brect = board.getBoundingClientRect();
+
+    startX = e.clientX;
+    startY = e.clientY;
+    origX = rect.left - brect.left;
+    origY = rect.top - brect.top;
+
     document.addEventListener('mousemove',onDrag);
     document.addEventListener('mouseup',endDrag);
   }
+
   function onDrag(e){
     if(!dragged)return;
-    const dx=e.clientX-startX, dy=e.clientY-startY;
-    dragged.style.left=origX+dx+'px';
-    dragged.style.top=origY+dy+'px';
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    dragged.style.left = origX + dx + 'px';
+    dragged.style.top  = origY + dy + 'px';
   }
-  function endDrag(){ savePosition(); cleanupDrag(); }
 
-  // Touch drag
+  function endDrag(){
+    savePosition();
+    cleanupDrag();
+  }
+
+  /* --------------------------------------------
+      DRAG TOUCH
+  -------------------------------------------- */
   function startDragTouch(e){
     if(e.target.classList.contains('resize-handle'))return;
     e.preventDefault();
-    dragged=e.currentTarget;
-    touchStartTime=Date.now();
-    const t=e.touches[0];
-    const rect=dragged.getBoundingClientRect();
-    const brect=board.getBoundingClientRect();
-    startX=t.clientX; startY=t.clientY;
-    origX=rect.left-brect.left; origY=rect.top-brect.top;
+
+    dragged = e.currentTarget;
+    touchStartTime = Date.now();
+
+    const t = e.touches[0];
+    const rect = dragged.getBoundingClientRect();
+    const brect = board.getBoundingClientRect();
+
+    startX = t.clientX;
+    startY = t.clientY;
+    origX = rect.left - brect.left;
+    origY = rect.top - brect.top;
+
     document.addEventListener('touchmove',onDragTouch,{passive:false});
     document.addEventListener('touchend',endDragTouch);
   }
+
   function onDragTouch(e){
     if(!dragged)return;
     e.preventDefault();
-    const t=e.touches[0];
-    const dx=t.clientX-startX, dy=t.clientY-startY;
-    dragged.style.left=origX+dx+'px';
-    dragged.style.top=origY+dy+'px';
-  }
-  function endDragTouch(e){
-    const tapTime=Date.now()-touchStartTime;
-    if(tapTime<200){
-      const el=dragged;
-      const selected=el.classList.contains('selected');
-      board.querySelectorAll('.photo').forEach(p=>p.classList.remove('selected'));
-      if(!selected) el.classList.add('selected');
-      cleanupDrag(); dragged=null; return;
-    }
-    savePosition(); cleanupDrag();
+
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+
+    dragged.style.left = origX + dx + 'px';
+    dragged.style.top  = origY + dy + 'px';
   }
 
-  // Resize (mouse)
-  function startResize(e){
-    e.stopPropagation();
-    resizing=e.target.parentElement;
-    const img=resizing.querySelector('img');
-    const rect=img.getBoundingClientRect();
-    startW=rect.width; startH=rect.height;
-    startX=e.clientX; startY=e.clientY;
-    document.addEventListener('mousemove',onResize);
-    document.addEventListener('mouseup',endResize);
-  }
-  function onResize(e){
-    if(!resizing)return;
-    const img=resizing.querySelector('img');
-    const dx=e.clientX-startX;
-    img.style.width=(startW+dx)+'px';
-  }
-  function endResize(){
-    saveSize(resizing);
-    resizing=null;
-    document.removeEventListener('mousemove',onResize);
-    document.removeEventListener('mouseup',endResize);
+  function endDragTouch(){
+    savePosition();
+    cleanupDrag();
   }
 
-  // Resize (touch)
-  function startResizeTouch(e){
-    e.preventDefault(); e.stopPropagation();
-    resizing=e.target.parentElement;
-    const img=resizing.querySelector('img');
-    const rect=img.getBoundingClientRect();
-    startW=rect.width; startH=rect.height;
-    const t=e.touches[0];
-    startX=t.clientX; startY=t.clientY;
-    document.addEventListener('touchmove',onResizeTouch,{passive:false});
-    document.addEventListener('touchend',endResizeTouch);
-  }
-  function onResizeTouch(e){
-    if(!resizing)return;
-    e.preventDefault();
-    const t=e.touches[0];
-    const dx=t.clientX-startX;
-    const img=resizing.querySelector('img');
-    img.style.width=(startW+dx)+'px';
-  }
-  function endResizeTouch(){
-    saveSize(resizing);
-    resizing=null;
-    document.removeEventListener('touchmove',onResizeTouch);
-    document.removeEventListener('touchend',endResizeTouch);
-  }
-
-  function savePosition(){
-    if(dragged){
-      const id=dragged.dataset.id;
-      const ph=data[currentDay].find(p=>p.id===id);
-      if(ph){
-        const rect=dragged.getBoundingClientRect();
-        const brect=board.getBoundingClientRect();
-        ph.x=rect.left-brect.left;
-        ph.y=rect.top-brect.top;
-      }
-    }
-  }
-  function saveSize(el){
-    const id=el.dataset.id;
-    const ph=data[currentDay].find(p=>p.id===id);
-    if(ph){
-      const img=el.querySelector('img');
-      ph.width=parseFloat(img.style.width)||img.width;
-    }
-  }
   function cleanupDrag(){
     document.removeEventListener('mousemove',onDrag);
     document.removeEventListener('mouseup',endDrag);
@@ -282,49 +252,124 @@
     document.removeEventListener('touchend',endDragTouch);
   }
 
-  // Popup logic
+  /* --------------------------------------------
+      RESIZE
+  -------------------------------------------- */
+  function startResize(e){
+    e.stopPropagation();
+    resizing = e.target.parentElement;
+
+    const img = resizing.querySelector('img');
+    const rect = img.getBoundingClientRect();
+
+    startW = rect.width;
+    startX = e.clientX;
+
+    document.addEventListener('mousemove',onResize);
+    document.addEventListener('mouseup',endResize);
+  }
+
+  function onResize(e){
+    if(!resizing)return;
+    const img = resizing.querySelector('img');
+    const dx = e.clientX - startX;
+    img.style.width = (startW + dx) + 'px';
+  }
+
+  function endResize(){
+    saveSize(resizing);
+    resizing=null;
+    document.removeEventListener('mousemove',onResize);
+    document.removeEventListener('mouseup',endResize);
+  }
+
+  /* --------------------------------------------
+      RESIZE TOUCH
+  -------------------------------------------- */
+  function startResizeTouch(e){
+    e.preventDefault(); e.stopPropagation();
+    resizing = e.target.parentElement;
+
+    const img = resizing.querySelector('img');
+    const rect = img.getBoundingClientRect();
+
+    startW = rect.width;
+    const t = e.touches[0];
+    startX = t.clientX;
+
+    document.addEventListener('touchmove',onResizeTouch,{passive:false});
+    document.addEventListener('touchend',endResizeTouch);
+  }
+
+  function onResizeTouch(e){
+    if(!resizing)return;
+    e.preventDefault();
+
+    const t = e.touches[0];
+    const dx = t.clientX - startX;
+
+    const img = resizing.querySelector('img');
+    img.style.width = (startW + dx) + 'px';
+  }
+
+  function endResizeTouch(){
+    saveSize(resizing);
+    resizing=null;
+    document.removeEventListener('touchmove',onResizeTouch);
+    document.removeEventListener('touchend',endResizeTouch);
+  }
+
+  /* --------------------------------------------
+      SAVE POS/ SIZE to DATA (NOT STORAGE)
+      (Manual saving only when user presses SAVE)
+  -------------------------------------------- */
+  function savePosition(){
+    if(dragged){
+      const id = dragged.dataset.id;
+      const ph = data[currentDay].find(p=>p.id===id);
+      if(ph){
+        const rect = dragged.getBoundingClientRect();
+        const brect = board.getBoundingClientRect();
+        ph.x = rect.left - brect.left;
+        ph.y = rect.top - brect.top;
+      }
+    }
+  }
+
+  function saveSize(el){
+    const id = el.dataset.id;
+    const ph = data[currentDay].find(p=>p.id===id);
+    if(ph){
+      const img = el.querySelector('img');
+      ph.width = parseFloat(img.style.width) || img.width;
+    }
+  }
+
+  /* --------------------------------------------
+      POPUP
+  -------------------------------------------- */
   insertPhotoBtn.addEventListener('click',()=>popup.style.display='flex');
   closePopupBtn.addEventListener('click',()=>popup.style.display='none');
+
   libraryBtn.addEventListener('click',()=>{fileInput.click();popup.style.display='none';});
   cameraBtn.addEventListener('click',()=>{cameraInput.click();popup.style.display='none';});
   fileBtn.addEventListener('click',()=>{fileInput.click();popup.style.display='none';});
 
-  pasteBtn.addEventListener('click',async()=>{
-    popup.style.display='none';
-    try{
-      const items=await navigator.clipboard.read();
-      for(const item of items){
-        for(const type of item.types){
-          if(type.startsWith('image/')){
-            const blob=await item.getType(type);
-            const r=new FileReader();
-            await new Promise(res=>{
-              r.onload=()=>{
-                data[currentDay].push({
-                  id:createId(),src:r.result,
-                  x:Math.random()*100+20,
-                  y:Math.random()*60+20,
-                  name:'Pasted Image'
-                });
-                res();
-              };
-              r.readAsDataURL(blob);
-            });
-          }
-        }
-      }
-      renderBoard();
-    }catch(err){alert("No image in clipboard or unsupported.");}
-  });
-
+  /* --------------------------------------------
+      FILE HANDLING
+  -------------------------------------------- */
   async function handleFiles(files){
     for(const f of files){
       const r=new FileReader();
       await new Promise(res=>{
         r.onload=()=>{
           data[currentDay].push({
-            id:createId(),src:r.result,
-            x:Math.random()*100+20,y:Math.random()*60+20,name:f.name
+            id:createId(),
+            src:r.result,
+            x:40,
+            y:40,
+            width:150,
+            name:f.name
           });
           res();
         };
@@ -338,60 +383,130 @@
     handleFiles(e.target.files);
     e.target.value='';
   });
+
   cameraInput.addEventListener('change',e=>{
     handleFiles(e.target.files);
     e.target.value='';
   });
 
-  addDayBtn.addEventListener('click',()=>{
-    const n=Object.keys(data).length+1;
-    const name='Day '+n;
-    data[name]=[];
-    currentDay=name;
-    renderDays();renderBoard();
+  /* --------------------------------------------
+      PASTE IMAGE
+  -------------------------------------------- */
+  pasteBtn.addEventListener('click',async()=>{
+    popup.style.display='none';
+    try{
+      const items=await navigator.clipboard.read();
+      for(const item of items){
+        for(const type of item.types){
+          if(type.startsWith('image/')){
+            const blob=await item.getType(type);
+            const r=new FileReader();
+            await new Promise(res=>{
+              r.onload=()=>{
+                data[currentDay].push({
+                  id:createId(),
+                  src:r.result,
+                  x:40,
+                  y:40,
+                  width:150,
+                  name:'Pasted Image'
+                });
+                res();
+              };
+              r.readAsDataURL(blob);
+            });
+          }
+        }
+      }
+      renderBoard();
+    }catch(err){
+      alert("No image in clipboard or unsupported.");
+    }
   });
 
-  daySelect.addEventListener('change',()=>{currentDay=daySelect.value;renderBoard();});
-  deletePhotoBtn.addEventListener('click',()=>{
-    const selected=[...board.querySelectorAll('.photo.selected')];
-    if(!selected.length)return alert('Select a photo first.');
-    if(!confirm('Delete selected photo(s)?'))return;
-    const ids=selected.map(el=>el.dataset.id);
-    data[currentDay]=data[currentDay].filter(p=>!ids.includes(p.id));
+  /* --------------------------------------------
+      ADD DAY
+  -------------------------------------------- */
+  addDayBtn.addEventListener('click',()=>{
+    const n = Object.keys(data).length + 1;
+    const name = 'Day ' + n;
+
+    data[name] = [];
+    currentDay = name;
+
+    renderDays();
     renderBoard();
   });
 
-  saveLocalBtn.addEventListener('click',()=>{
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
-    saveLocalBtn.textContent='Saved ✓';
-    setTimeout(()=>saveLocalBtn.textContent='Save Local',1000);
+  /* --------------------------------------------
+      SELECT DAY
+  -------------------------------------------- */
+  daySelect.addEventListener('change',()=>{
+    currentDay = daySelect.value;
   });
 
+  /* --------------------------------------------
+      DELETE PHOTO
+  -------------------------------------------- */
+  deletePhotoBtn.addEventListener('click',()=>{
+    const selected = [...board.querySelectorAll('.photo.selected')];
+    if(!selected.length) return alert('Select a photo first.');
+    if(!confirm('Delete selected photo(s)?'))return;
+
+    const ids = selected.map(el=>el.dataset.id);
+    data[currentDay] = data[currentDay].filter(p=>!ids.includes(p.id));
+
+    renderBoard();
+  });
+
+  /* --------------------------------------------
+      SAVE MANUAL
+  -------------------------------------------- */
+  saveLocalBtn.addEventListener('click',()=>{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(STORAGE_DAY_KEY, currentDay);
+
+    saveLocalBtn.textContent = "Saved ✓";
+    setTimeout(()=>saveLocalBtn.textContent="Save Local",1000);
+  });
+
+  /* --------------------------------------------
+      RESET
+  -------------------------------------------- */
   resetBtn.addEventListener('click',()=>{
     if(confirm('Reset everything?')){
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_DAY_KEY);
       location.reload();
     }
   });
 
+  /* --------------------------------------------
+      LOAD FROM STORAGE
+  -------------------------------------------- */
   function load(){
-    const raw=localStorage.getItem(STORAGE_KEY);
-    if(raw) data=JSON.parse(raw);
-    else {
-      data={
-        "Day 1":[
-          {id:createId(),src:"https://media.neimanmarcus.com/f_auto,q_auto:low,ar_4:5,c_fill,dpr_2.0,w_790/01/nm_4342338_100550_a",x:20,y:60,name:"Cat",width:150},
-          {id:createId(),src:"https://static.vecteezy.com/system/resources/previews/032/067/531/original/white-female-skirt-ai-generative-free-png.png",x:10,y:180,name:"Skirt",width:130}
-        ]
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const savedDay = localStorage.getItem(STORAGE_DAY_KEY);
+
+    if(raw){
+      data = JSON.parse(raw);
+      currentDay = savedDay || Object.keys(data)[0] || "Day 1";
+    } else {
+      data = {
+        "Day 1":[]
       };
+      currentDay = "Day 1";
     }
-    currentDay=Object.keys(data)[0]||"Day 1";
   }
 
+  /* --------------------------------------------
+      INIT
+  -------------------------------------------- */
   load();
   renderDays();
   renderBoard();
 })();
 </script>
+
 </body>
 </html>
